@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Apple (AAPL) - Live Stock Dashboard</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root{
+      --bg: #0f1724;
+      --card: #0b1220;
+      --muted:#9aa4b2;
+      --accent: #4f9cff;
+      --gain: #16a34a;
+      --loss: #ef4444;
+      --glass: rgba(255,255,255,0.03);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      background: linear-gradient(180deg,#071126 0%, #0c1727 100%);
+      color:#e6eef8;
+      min-height:100vh;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:24px;
+      -webkit-font-smoothing:antialiased;
+    }
+    .container{
+      width:980px;
+      max-width:100%;
+      border-radius:12px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+      box-shadow: 0 8px 30px rgba(2,6,23,0.6);
+      padding:20px;
+      display:grid;
+      grid-template-columns: 360px 1fr;
+      gap:18px;
+    }
+
+    /* Left panel */
+    .card{
+      background:var(--card);
+      border-radius:10px;
+      padding:18px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
+    }
+    .brand{
+      display:flex;
+      gap:12px;
+      align-items:center;
+    }
+    .logo{
+      width:54px;height:54px;border-radius:10px;background:var(--glass);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:20px;
+    }
+    .title{
+      font-size:18px;font-weight:700;
+    }
+    .subtitle{color:var(--muted);font-size:13px;margin-top:4px}
+
+    .price-row{display:flex;align-items:end;gap:12px;margin-top:18px}
+    .price{
+      font-size:34px;font-weight:800;
+      letter-spacing: -0.5px;
+    }
+    .change{
+      padding:6px 10px;border-radius:10px;font-weight:700;font-size:13px;
+    }
+
+    .meta{margin-top:14px;color:var(--muted);font-size:13px;display:flex;gap:10px;flex-wrap:wrap}
+    .meta .pill{background:var(--glass);padding:8px 10px;border-radius:8px}
+
+    /* Chart area */
+    .chart-card{
+      background:linear-gradient(180deg, rgba(255,255,255,0.015), rgba(255,255,255,0.01));
+      border-radius:10px;padding:14px;
+      display:flex;flex-direction:column;height:100%;
+    }
+    canvas{width:100% !important;height:260px !important}
+
+    /* Controls & footer */
+    .controls{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+    .controls .left{display:flex;gap:8px;align-items:center}
+    .controls button{background:transparent;border:1px solid rgba(255,255,255,0.04);color:var(--muted);padding:8px 10px;border-radius:8px;cursor:pointer}
+    .controls .refresh{background:transparent;color:var(--accent);border:1px solid rgba(79,156,255,0.12)}
+    .small{font-size:12px;color:var(--muted)}
+    .footer{margin-top:auto;color:var(--muted);font-size:12px}
+    .hint{color:var(--muted);font-size:13px;margin-top:10px}
+    @media (max-width:880px){
+      .container{grid-template-columns:1fr; padding:14px}
+      .price-row{flex-direction:column;align-items:flex-start}
+      canvas{height:200px !important}
+    }
+  </style>
+  <!-- Chart.js CDN (lightweight and widely used) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" defer></script>
+</head>
+<body>
+  <div class="container" role="main" aria-label="Apple stock dashboard">
+    <div class="card" id="leftPanel">
+      <div class="brand">
+        <div class="logo"></div>
+        <div>
+          <div class="title">Apple Inc. <span style="color:var(--muted);font-weight:600">AAPL</span></div>
+          <div class="subtitle">Live price · US Markets</div>
+        </div>
+      </div>
+
+      <div class="price-row" style="margin-bottom:6px">
+        <div class="price" id="price">—</div>
+        <div id="change" class="change" style="background:transparent">—</div>
+      </div>
+
+      <div class="meta">
+        <div class="pill">Open: <strong id="open">—</strong></div>
+        <div class="pill">High: <strong id="high">—</strong></div>
+        <div class="pill">Low: <strong id="low">—</strong></div>
+        <div class="pill">Volume: <strong id="volume">—</strong></div>
+      </div>
+
+      <div class="hint">Data source: Alpha Vantage (requires your API key). Update interval controlled below.</div>
+
+      <div style="margin-top:14px;display:flex;gap:10px;align-items:center">
+        <label class="small">Auto-refresh:</label>
+        <select id="intervalSelect" style="padding:8px;border-radius:8px;background:transparent;border:1px solid rgba(255,255,255,0.04);color:var(--muted)">
+          <option value="0">Off</option>
+          <option value="60000">1 min</option>
+          <option value="300000">5 min</option>
+          <option value="900000">15 min</option>
+        </select>
+        <button id="manualRefresh" class="refresh">Refresh now</button>
+      </div>
+
+      <div class="hint" style="margin-top:12px">If you don't have an API key, set <code>USE_MOCK = true</code> in the script for demo data.</div>
+    </div>
+
+    <div class="chart-card">
+      <div class="controls">
+        <div class="left">
+          <strong>Price sparkline</strong>
+          <div style="margin-left:8px" class="small" id="lastUpdated">—</div>
+        </div>
+        <div>
+          <button id="downloadCSV">Download CSV</button>
+        </div>
+      </div>
+
+      <canvas id="priceChart" aria-label="Apple price chart"></canvas>
+
+      <div class="footer">
+        Built with HTML/CSS/JS · Demo dashboard · Not for trading decisions.
+      </div>
+    </div>
+  </div>
+
+<script>
+/*
+  Single-file Apple AAPL dashboard.
+  - Uses Alpha Vantage GLOBAL_QUOTE endpoint.
+  - Replace API_KEY with your key or set USE_MOCK = true to see demo data.
+  - Be mindful of API rate limits (Alpha Vantage free tier).
+  References: Alpha Vantage docs.
+*/
+
+const API_KEY = 'YOUR_ALPHA_VANTAGE_API_KEY_HERE'; // <-- paste your key here
+const SYMBOL = 'AAPL';
+const USE_MOCK = false; // set to true if you don't have an API key (demo data)
+const ALPHA_BASE = 'https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=' + SYMBOL + '&apikey=';
+
+let refreshTimer = null;
+let chart = null;
+let historyPoints = []; // keep last N price points locally for small sparkline
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Wire up controls
+  document.getElementById('manualRefresh').addEventListener('click', fetchAndUpdate);
+  document.getElementById('intervalSelect').addEventListener('change', changeInterval);
+  document.getElementById('downloadCSV').addEventListener('click', downloadCSV);
+
+  createChart();
+  fetchAndUpdate();
+});
+
+function changeInterval(e){
+  const ms = parseInt(e.target.value, 10);
+  if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+  if (ms > 0) refreshTimer = setInterval(fetchAndUpdate, ms);
+}
+
+function createChart(){
+  const ctx = document.getElementById('priceChart').getContext('2d');
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [{
+        label: 'AAPL',
+        data: [],
+        tension: 0.25,
+        borderWidth: 2,
+        pointRadius: 0,
+        fill: true,
+        borderColor: undefined // set dynamically by updateChartColors
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { mode: 'index', intersect: false }
+      },
+      scales: {
+        x: { display: false },
+        y: { ticks: { color: '#cbd5e1' } }
+      }
+    }
+  });
+}
+
+async function fetchAndUpdate(){
+  try {
+    const quote = await fetchQuote();
+    if (!quote) throw new Error('No data received');
+
+    const price = parseFloat(quote['05. price'] || quote['05. price']);
+    const prevClose = parseFloat(quote['08. previous close'] || quote['08. previous close'] || quote['04. close']);
+    const open = quote['02. open'];
+    const high = quote['03. high'];
+    const low = quote['04. low'];
+    const volume = quote['06. volume'];
+
+    // Update left panel
+    document.getElementById('price').textContent = isNaN(price) ? '—' : price.toFixed(2);
+    const ch = isNaN(price) || isNaN(prevClose) ? null : (price - prevClose);
+    const chPct = ch === null ? null : (ch / prevClose * 100);
+    const changeEl = document.getElementById('change');
+    if (ch === null) {
+      changeEl.textContent = '—';
+      changeEl.style.background = 'transparent';
+      changeEl.style.color = 'var(--muted)';
+    } else {
+      changeEl.textContent = (ch >= 0 ? '+' : '') + ch.toFixed(2) + ' (' + (chPct >= 0 ? '+' : '') + chPct.toFixed(2) + '%)';
+      changeEl.style.background = ch >= 0 ? 'rgba(22,163,74,0.12)' : 'rgba(239,68,68,0.12)';
+      changeEl.style.color = ch >= 0 ? 'var(--gain)' : 'var(--loss)';
+    }
+
+    document.getElementById('open').textContent = open || '—';
+    document.getElementById('high').textContent = high || '—';
+    document.getElementById('low').textContent = low || '—';
+    document.getElementById('volume').textContent = volume || '—';
+    document.getElementById('lastUpdated').textContent = 'Updated: ' + new Date().toLocaleString();
+
+    // Update chart history (keep 40 points)
+    if (!isNaN(price)) {
+      historyPoints.push({t: new Date(), v: price});
+      if (historyPoints.length > 40) historyPoints.shift();
+      updateChart();
+    }
+
+  } catch (err) {
+    console.error('Fetch/update error:', err);
+    document.getElementById('lastUpdated').textContent = 'Error fetching data';
+  }
+}
+
+async function fetchQuote(){
+  if (USE_MOCK) {
+    // Demo data (random walk)
+    const base = historyPoints.length ? historyPoints[historyPoints.length-1].v : 190 + Math.random()*10;
+    const newv = +(base * (1 + (Math.random()-0.5)/200)).toFixed(2);
+    return {
+      '01. symbol': SYMBOL,
+      '02. open': (newv * 0.995).toFixed(2),
+      '03. high': (newv * 1.006).toFixed(2),
+      '04. low': (newv * 0.994).toFixed(2),
+      '05. price': newv.toFixed(2),
+      '06. volume': Math.floor(1000000 + Math.random()*100000),
+      '08. previous close': (newv * 0.997).toFixed(2)
+    };
+  }
+
+  if (!API_KEY || API_KEY.includes('YOUR_ALPHA')) {
+    alert('Please add your Alpha Vantage API key in the HTML (API_KEY variable) or enable USE_MOCK = true for demo mode.');
+    throw new Error('No API key provided');
+  }
+
+  const url = ALPHA_BASE + encodeURIComponent(API_KEY);
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error('Network response not ok: ' + resp.status);
+  const data = await resp.json();
+
+  // Alpha Vantage returns { "Global Quote": { ... } } or error message
+  if (data['Note'] || data['Error Message']) {
+    console.warn('Alpha Vantage message:', data['Note'] || data['Error Message']);
+    throw new Error(data['Note'] || data['Error Message'] || 'AlphaVantage error');
+  }
+
+  const g = data['Global Quote'] || data['Global quote'] || data;
+  // Some wrappers return the nested object or direct; attempt best effort
+  return g;
+}
+
+function updateChart(){
+  const labels = historyPoints.map(p => p.t.toLocaleTimeString());
+  const values = historyPoints.map(p => p.v);
+
+  chart.data.labels = labels;
+  chart.data.datasets[0].data = values;
+
+  const last = values[values.length-1];
+  const first = values[0] || last;
+  // green if up, red if down
+  chart.data.datasets[0].borderColor = last >= first ? 'rgba(79,156,255,1)' : 'rgba(239,68,68,1)';
+  chart.update();
+}
+
+function downloadCSV(){
+  if (!historyPoints.length) { alert('No data to download'); return; }
+  const rows = [['timestamp','price']];
+  historyPoints.forEach(p => rows.push([p.t.toISOString(), p.v]));
+  const csv = rows.map(r => r.join(',')).join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'AAPL_history.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+</script>
+</body>
+</html>
